@@ -164,10 +164,10 @@ a slightly more concrete example:
 Let's say your experiment peaks at VRAM usage of less than 2 GB (always round up), and after
 considering all your hyperparameters, you have 100 experiments to run. From
 the [CC webpage](https://docs.computecanada.ca/wiki/Using_GPUs_with_Slurm)
-you decide to use the `v100l` GPUs for your experiments. Each one of these
-GPUs have 32 GB of VRAM. That means you can fit 32 / 2 = 16 experiments onto a single
+you decide to use the `p100` GPUs for your experiments. Each one of these
+GPUs have 12 GB of VRAM. That means you can fit 12 / 3 = 4 experiments onto a single
 GPU at one time. This means that I would split up my task files into files with 
-16 experiments each (with 100 / 16 = 7 task files total), 
+4 experiments each (with 100 / 4 = 25 task files total), 
 and run one CC job for each of these task files. You could quite easily achieve
 this in Python by keeping a count of the number of experiments written and open a
 new task file whenever that count modulo the number of experiments per job is 0.
@@ -225,15 +225,18 @@ So now you'll have a CC script that looks something like this (let's call it `ru
 #SBATCH --mail-user=someone@domain.com
 #SBATCH --error=/home/TO_FILL_USER/scratch/log/slurm-%j-%n-%a.err
 #SBATCH --output=/home/TO_FILL_USER/scratch/log/slurm-%j-%n-%a.out
-#SBATCH --gres=gpu:v100l:1
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=50G
+#SBATCH --gres=gpu:p100:1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=20G
 #SBATCH --time=0-24:00
 
 cd ../../  # Go to main project folder
 source venv/bin/activate  # activate venv
-parallel --joblog ../log/'task_'"$SLURM_ARRAY_TASK_ID"'.log' < 'script/interference/tasks_'"$SLURM_ARRAY_TASK_ID"'.txt'
+parallel --jobs 4 --joblog ../log/'task_'"$SLURM_ARRAY_TASK_ID"'.log' -u < 'script/interference/tasks_'"$SLURM_ARRAY_TASK_ID"'.txt'
 ```
+Note that we use the `-u` option, which stands for ungrouped. This means that the output
+of all the tasks won't be grouped into one output stream, and that you'll get logs in your
+CC logs to tell you if something went wrong.
 Now I'll have to briefly explain what `$SLURM_ARRAY_TASK_ID` is. This is a script to run
 a [job array](https://docs.computecanada.ca/wiki/Job_arrays) - or multiple CC jobs that
 indexes into multiple files. My `write_job.py` script has it so that I have multiple task files.
@@ -248,6 +251,10 @@ in my CC script (like above) and try running the parallel call (after activating
 env) in the CC script. I'll let it run for at least until I see my GPU and Memory usage
 level out in my experiment (with a combination of `tmux`, `htop` and `nvidia-smi`) just
 to be sure I don't run into any out of memory errors.
+
+One final note - while it is possible to run multiple experiments on a single GPU, it turns out there's
+a decent amount of overhead when you start to add too many experiments on one GPU.
+Try to find GPUs with less VRAM but still decently fast and run less experiments per GPU.
 
 Finally, when this is all good to go, I'll run my script.
 
